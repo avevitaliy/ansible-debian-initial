@@ -1,0 +1,87 @@
+---
+
+- name: changing 127.0.0.1 in /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.0\.1'
+    line: "127.0.0.1 {{ host_name }}.{{ domain_name }} {{ host_name }} localhost"
+
+- name: set hostname
+  hostname: name={{ host_name }}
+
+- name: update and upgrade pkg
+  apt:
+    upgrade: true
+    update_cache: true
+
+- name: install pkg
+  apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: false
+  loop:
+    - sudo
+    - mc
+    - curl
+    - open-vm-tools
+
+- lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: '^%wheel\s'
+    line: '%wheel ALL=NOPASSWD: ALL'
+
+- name: add group wheel
+  group:
+    name: wheel
+    state: present
+
+- name: add user to group
+  user:
+    name: "{{ item }}"
+    append: true
+    groups: wheel
+    shell: "/bin/bash"
+  loop: "{{ addusers }}"
+
+- name: lock root
+  user:
+    name: root
+    password_lock: false
+
+- name: enable ssh passwd
+  replace:
+    path: /etc/ssh/sshd_config
+    regexp: 'PasswordAuthentication no'
+    replace: 'PasswordAuthentication yes'
+
+- name: restart sshd service
+  systemd:
+    name: ssh
+    state: restarted
+
+- name: install tmux
+  become: true
+  apt: pkg=tmux state=present update_cache=false
+
+- name: set tmux config
+  copy: src=.tmux.conf dest=/home/{{ item }}/.tmux.conf mode=0440 owner="{{ item }}"
+  loop: "{{ addusers }}"
+
+- name: set tmux autoload
+  loop: "{{ addusers }}"
+  blockinfile:
+    dest: "/home/{{ item }}/.bashrc"
+    content: |
+      if [[ -n $SSH_CONNECTION ]] ; then
+        ssh_count=`who | grep -v localhost | wc -l`
+        ses_count=`tmux ls | wc -l`
+        for ((a=1; a <= $ssh_count; a++))
+        do
+          tmp_count=`tmux ls | grep '(attached)' | awk -F ':' '{print $1}' | sort | awk "(NR == $a)"`
+        if [[ $tmp_count != $a || -z $tmp_count ]]; then
+          /usr/bin/tmux attach -t $a || /usr/bin/tmux new -n `hostname -f` -s $a
+          break
+        fi
+        done
+      fi

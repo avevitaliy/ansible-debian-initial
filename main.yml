@@ -1,0 +1,29 @@
+---
+
+- name: initial setup command for debian
+  hosts: all
+  gather_facts: no
+  become: true
+  become_method: su
+  remote_user: "{{ username }}"
+
+  vars:
+      ansible_su_pass: "{{ su_pass }}"
+      ansible_sudo_pass: "{{ su_pass }}"
+      ansible_ssh_pass: "{{ ssh_pass }}"
+      ansible_host_key_checking: false
+
+  vars_prompt:
+      - name: "username"
+        prompt: "Username to connect"
+        private: no
+
+      - name: "ssh_pass"
+        prompt: "Password to connect"
+        private: yes
+
+      - name: "su_pass"
+        prompt: "Password to su"
+        private: yes
+  roles:
+    - debian_initial
